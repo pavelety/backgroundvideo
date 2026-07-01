@@ -147,7 +147,9 @@ public class BackgroundVideo extends CordovaPlugin {
             public void run() {
                 try {
                     Log.d(TAG, "videoOverlay.Start");
-                    videoOverlay.Start(getFilePath(filename));
+                    String filepath = getFilePath(filename);
+                    videoOverlay.Start(filepath);
+                    callbackContext.success(filepath);
                 } catch (Exception e) {
                     e.printStackTrace();
                     callbackContext.error(e.getMessage());

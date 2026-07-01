@@ -3,11 +3,11 @@
     xmlns:rim="http://www.blackberry.com/ns/widgets"
     xmlns:android="http://schemas.android.com/apk/res/android"
     id="cordova-backgroundvideo-tests"
-    version="0.0.22">
+    version="0.0.23">
     <name>Iclue Background Video Cordova Plugin Tests</name>
     <license>GPL3</license>
 
-    <dependency id="cordova-backgroundvideo" version=">=0.0.22" />
+    <dependency id="cordova-backgroundvideo" version=">=0.0.23" />
 
     <js-module src="tests.js" name="tests">
     </js-module>
