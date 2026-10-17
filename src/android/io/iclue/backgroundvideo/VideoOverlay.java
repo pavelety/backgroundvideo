@@ -6,12 +6,15 @@ import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
 import android.media.CamcorderProfile;
 import android.media.MediaRecorder;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
 
+import java.io.File;
 import java.io.IOException;
 
 @SuppressWarnings("deprecation")
@@ -31,6 +34,19 @@ public class VideoOverlay extends ViewGroup implements TextureView.SurfaceTextur
     private int mOrientation;
     private int videoBitrate;
     private int audioBitrate;
+    //another app took the camera: the part is closed, the recording goes on in a new file when the camera is free
+    private static final long RESUME_RETRY_MS = 3000;
+    private final Handler mHandler = new Handler(Looper.getMainLooper());
+    private boolean mResuming = false;
+    private SegmentListener mSegmentListener;
+
+    public interface SegmentListener {
+        void onSegment(String filePath);
+    }
+
+    public void setSegmentListener(SegmentListener listener) {
+        mSegmentListener = listener;
+    }
 
     public VideoOverlay(Context context) {
         super(context);
@@ -92,6 +108,10 @@ public class VideoOverlay extends ViewGroup implements TextureView.SurfaceTextur
             throw new NullPointerException("Cannot start recording, we don't have a camera!");
         }
 
+        startRecorder(filePath);
+    }
+
+    private void startRecorder(String filePath) throws Exception {
         // Set camera parameters
         Camera.Parameters cameraParameters = mCamera.getParameters();
         Log.d(TAG, "stopPreview()");
@@ -152,6 +172,8 @@ public class VideoOverlay extends ViewGroup implements TextureView.SurfaceTextur
 
     public String Stop() throws IOException {
         Log.d(TAG, "stopRecording called");
+        mResuming = false;
+        mHandler.removeCallbacks(mResume);
 
         if (mRecorder != null) {
             MediaRecorder tempRecorder = mRecorder;
@@ -206,6 +228,7 @@ public class VideoOverlay extends ViewGroup implements TextureView.SurfaceTextur
                         @Override
                         public void onError(int error, Camera camera) {
                             Log.e(TAG, "Camera error: " + error);
+                            onCameraLost(error);
                         }
                     });
                     Log.d(TAG, "Camera configured");
@@ -215,6 +238,67 @@ public class VideoOverlay extends ViewGroup implements TextureView.SurfaceTextur
                 Log.e(TAG, "Unable to open camera. Another application probably has a lock", ex);
             }
         }
+    }
+
+    private void onCameraLost(int error) {
+        if (mRecordingState != RecordingState.STARTED) return;
+        Log.w(TAG, "Camera lost (" + error + "), the part is closed, the recording goes on when the camera is free");
+        if (mRecorder != null) {
+            MediaRecorder tempRecorder = mRecorder;
+            mRecorder = null;
+            try {
+                tempRecorder.stop();
+            } catch (Exception e) {
+                Log.e(TAG, "Could not stop the recording after the camera was lost", e);
+            }
+            try {
+                tempRecorder.release();
+            } catch (Exception e) {
+                Log.e(TAG, "Could not release the recorder", e);
+            }
+        }
+        releaseLostCamera();
+        mResuming = true;
+        mHandler.postDelayed(mResume, RESUME_RETRY_MS);
+    }
+
+    private final Runnable mResume = new Runnable() {
+        @Override
+        public void run() {
+            if (!mResuming) return;
+            String filePath = new File(new File(mFilePath).getParentFile(), System.currentTimeMillis() + ".mp4").getPath();
+            try {
+                initializeCamera();
+                if (mCamera == null) throw new IllegalStateException("the camera is busy");
+                SurfaceTexture texture = mPreview.getSurfaceTexture();
+                if (texture != null) mCamera.setPreviewTexture(texture);
+                mCamera.startPreview();
+                startRecorder(filePath);
+                mFilePath = filePath;
+                mResuming = false;
+                Log.i(TAG, "The recording goes on in " + filePath);
+                if (mSegmentListener != null) mSegmentListener.onSegment(filePath);
+            } catch (Exception e) {
+                Log.d(TAG, "The camera is not free yet: " + e.getMessage());
+                releaseLostCamera();
+                new File(filePath).delete();//a recorder that did not start may leave an empty file
+                mHandler.postDelayed(this, RESUME_RETRY_MS);
+            }
+        }
+    };
+
+    //a lost camera throws on stopPreview/lock: only release it
+    private void releaseLostCamera() {
+        if (mCamera != null) {
+            try {
+                mCamera.release();
+            } catch (Exception e) {
+                Log.w(TAG, "Could not release the lost camera", e);
+            }
+            mCamera = null;
+            mCameraId = CameraHelper.NO_CAMERA;
+        }
+        mRecordingState = RecordingState.STOPPED;
     }
 
     private void releaseCamera() {

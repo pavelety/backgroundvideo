@@ -26,6 +26,11 @@ var backgroundvideo = {
             console.log('video recording error:' + error);
         };
         cordova.exec(successFunction, errorFunction, "backgroundvideo", "stop", []);
+    },
+    //Android: joins the files of one recording (the start callback got a new one each time the camera came back from
+    //another app) into the first one on the real timeline; startTimes are the starts of the files in ms
+    merge: function (successFunction, errorFunction, filePaths, startTimes) {
+        cordova.exec(successFunction, errorFunction, "backgroundvideo", "merge", [filePaths, startTimes]);
     }
 };
 

@@ -52,6 +52,29 @@ var errorFn = function(error) {
 };
 cordova.plugins.backgroundvideo.stop(successFn, errorFn);
 ```
+
+#### Another app took the camera (Android)
+
+When another app opens the camera (the system camera, a messenger), Android takes it from the recorder. The plugin
+closes the current file, waits until the camera is free (it tries every 3 s) and goes on in a new file named by the
+time it started (`<ms>.mp4`, in the folder of the first one). The success callback of `start` is called again with
+the path of every new file, so keep it until `stop`. A video of one recording can be joined from these files:
+
+```js
+var files = [], starts = [];
+cordova.plugins.backgroundvideo.start(function (filePath) {
+    files.push(filePath);
+    starts.push(files.length === 1 ? Date.now() : Number(filePath.split('/').pop().split('.')[0]));
+}, errorFn, fileName);
+// ...after stop
+cordova.plugins.backgroundvideo.merge(function (filePath) {
+    console.log('one video of the recording:' + filePath);
+}, errorFn, files, starts);
+```
+
+`merge` joins the files into the first one on the real timeline: each file starts at its own time, the picture holds
+while the camera was away and the sound is silent there. The other files are deleted. When the files can't be joined,
+only the first one is kept.
 ### Other bits
 **File**
 - Outputs as mp4. You do not need to specify file extension.

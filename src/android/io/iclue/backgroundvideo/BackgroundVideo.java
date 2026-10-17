@@ -11,6 +11,7 @@ import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaInterface;
 import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.CordovaWebView;
+import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
 import org.json.JSONException;
 
@@ -24,6 +25,7 @@ public class BackgroundVideo extends CordovaPlugin {
     private static final String TAG = "BACKGROUND_VIDEO";
     private static final String ACTION_START_RECORDING = "start";
     private static final String ACTION_STOP_RECORDING = "stop";
+    private static final String ACTION_MERGE = "merge";
     private static final String FILE_EXTENSION = ".mp4";
     private static final int START_REQUEST_CODE = 0;
 
@@ -51,6 +53,10 @@ public class BackgroundVideo extends CordovaPlugin {
 
     @Override
     public boolean execute(String action, JSONArray args, final CallbackContext callbackContext) throws JSONException {
+        if (ACTION_MERGE.equalsIgnoreCase(action)) {//its own callback: a start or a stop keeps the one it has
+            Merge(args.getJSONArray(0), args.getJSONArray(1), callbackContext);
+            return true;
+        }
         this.callbackContext = callbackContext;
         this.requestArgs = args;
 
@@ -137,6 +143,14 @@ public class BackgroundVideo extends CordovaPlugin {
             });
         }
 
+        //kept open: a new file after the camera was taken by another app is reported to the same callback
+        final CallbackContext startContext = this.callbackContext;
+        videoOverlay.setSegmentListener(new VideoOverlay.SegmentListener() {
+            @Override
+            public void onSegment(String filePath) {
+                sendKeep(startContext, filePath);
+            }
+        });
         videoOverlay.setCameraFacing(cameraFace);
         videoOverlay.setRecordAudio(recordAudio);
         videoOverlay.setVideoBitrate(videoBitrate);
@@ -149,13 +163,42 @@ public class BackgroundVideo extends CordovaPlugin {
                     Log.d(TAG, "videoOverlay.Start");
                     String filepath = getFilePath(filename);
                     videoOverlay.Start(filepath);
-                    callbackContext.success(filepath);
+                    sendKeep(startContext, filepath);
                 } catch (Exception e) {
                     e.printStackTrace();
                     callbackContext.error(e.getMessage());
                 }
             }
         });
+    }
+
+    private static void sendKeep(CallbackContext context, String filePath) {
+        PluginResult result = new PluginResult(PluginResult.Status.OK, filePath);
+        result.setKeepCallback(true);
+        context.sendPluginResult(result);
+    }
+
+    //the parts of a recording (another app took the camera) are joined into the first file, off the main thread
+    private void Merge(JSONArray paths, JSONArray startsMs, final CallbackContext context) throws JSONException {
+        final List<File> files = new ArrayList<File>();
+        final List<Long> starts = new ArrayList<Long>();
+        for (int i = 0; i < paths.length(); i++) {
+            files.add(localFile(paths.getString(i)));
+            starts.add(startsMs.getLong(i));
+        }
+        cordova.getThreadPool().execute(new Runnable() {
+            @Override
+            public void run() {
+                context.success(VideoMerger.merge(files, starts, cordova.getActivity().getCacheDir()));
+            }
+        });
+    }
+
+    //a file:// URL from JS; the recording may be in the other folder: FILE_PATH is the one with more space
+    private File localFile(String path) {
+        File file = new File(path.startsWith("file://") ? path.substring("file://".length()) : path);
+        File here = new File(FILE_PATH, file.getName());
+        return !file.exists() && here.exists() ? here : file;
     }
 
     private void Stop() throws JSONException {
