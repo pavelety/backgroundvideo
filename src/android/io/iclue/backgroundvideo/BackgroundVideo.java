@@ -26,6 +26,7 @@ public class BackgroundVideo extends CordovaPlugin {
     private static final String ACTION_START_RECORDING = "start";
     private static final String ACTION_STOP_RECORDING = "stop";
     private static final String ACTION_MERGE = "merge";
+    private static final String ACTION_SPLIT = "split";
     private static final String FILE_EXTENSION = ".mp4";
     private static final int START_REQUEST_CODE = 0;
 
@@ -55,6 +56,10 @@ public class BackgroundVideo extends CordovaPlugin {
     public boolean execute(String action, JSONArray args, final CallbackContext callbackContext) throws JSONException {
         if (ACTION_MERGE.equalsIgnoreCase(action)) {//its own callback: a start or a stop keeps the one it has
             Merge(args.getJSONArray(0), args.getJSONArray(1), callbackContext);
+            return true;
+        }
+        if (ACTION_SPLIT.equalsIgnoreCase(action)) {
+            Split(args.getString(0), callbackContext);
             return true;
         }
         this.callbackContext = callbackContext;
@@ -194,6 +199,24 @@ public class BackgroundVideo extends CordovaPlugin {
         });
     }
 
+    //the recording goes on in a new file, the current one is closed: the camera stays, also out of the screen
+    private void Split(final String filename, final CallbackContext context) {
+        cordova.getActivity().runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (videoOverlay == null) throw new IllegalStateException("Not recording");
+                    String filePath = getFilePath(filename);
+                    videoOverlay.Split(filePath);
+                    context.success(filePath);
+                } catch (Exception e) {
+                    Log.e(TAG, "Could not split the recording", e);
+                    context.error(TAG + ": " + e.getMessage());
+                }
+            }
+        });
+    }
+
     //a file:// URL from JS; the recording may be in the other folder: FILE_PATH is the one with more space
     private File localFile(String path) {
         File file = new File(path.startsWith("file://") ? path.substring("file://".length()) : path);
@@ -229,12 +252,17 @@ public class BackgroundVideo extends CordovaPlugin {
         return FILE_PATH + fileName + FILE_EXTENSION;
     }
 
+    //the app goes away or the phone shuts down: the file is closed and nobody waits for an answer. The callback held then
+    //is the one of start, kept open for the new files: answered, the app took this file for a new part of itself and
+    //joined it to itself at its next start (a video twice as long)
     @Override
     public void onDestroy() {
-        try {
-            this.Stop();
-        } catch (JSONException e) {
-            Log.e(TAG, e.getMessage(), e);
+        if (videoOverlay != null) {
+            try {
+                videoOverlay.Stop();
+            } catch (IOException e) {
+                Log.e(TAG, e.getMessage(), e);
+            }
         }
         super.onDestroy();
     }

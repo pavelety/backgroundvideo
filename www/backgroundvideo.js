@@ -27,6 +27,11 @@ var backgroundvideo = {
         };
         cordova.exec(successFunction, errorFunction, "backgroundvideo", "stop", []);
     },
+    //Android: the recording goes on in a new file (named like in start) and the current one is closed, to be played or
+    //saved now. The camera is kept: out of the screen a stop and a start wait until the app is on the screen again
+    split: function (successFunction, errorFunction, filename) {
+        cordova.exec(successFunction, errorFunction, "backgroundvideo", "split", [filename || new Date().getTime() + '']);
+    },
     //Android: joins the files of one recording (the start callback got a new one each time the camera came back from
     //another app) into the first one on the real timeline; startTimes are the starts of the files in ms
     merge: function (successFunction, errorFunction, filePaths, startTimes) {

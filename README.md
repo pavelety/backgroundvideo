@@ -75,6 +75,21 @@ cordova.plugins.backgroundvideo.merge(function (filePath) {
 `merge` joins the files into the first one on the real timeline: each file starts at its own time, the picture holds
 while the camera was away and the sound is silent there. The other files are deleted. When the files can't be joined,
 only the first one is kept.
+
+#### Go on in a new file (Android)
+
+`split` closes the current file, so it can be played or saved now, and the recording goes on in a new one without
+releasing the camera. Out of the screen (minimized, locked) this is the way to start a new file: a `stop` and a
+`start` there wait for the camera preview until the app is on the screen again. A file still open when the phone turns
+off has no index and can't be played.
+
+```js
+cordova.plugins.backgroundvideo.split(function (filePath) {
+    console.log('the recording goes on in:' + filePath);
+}, errorFn, fileName);
+```
+
+Another app taking the camera later reports the new files to the callback of `start`, as before.
 ### Other bits
 **File**
 - Outputs as mp4. You do not need to specify file extension.

@@ -170,6 +170,26 @@ public class VideoOverlay extends ViewGroup implements TextureView.SurfaceTextur
         }
     }
 
+    /**
+     * The recording goes on in a new file, the current one is closed and can be played now. The camera and its preview
+     * stay: out of the screen a Stop and a Start would wait for the preview until the app is on the screen again.
+     */
+    public void Split(String filePath) throws Exception {
+        if (mRecordingState != RecordingState.STARTED || mRecorder == null) {
+            throw new IllegalStateException("Not recording");
+        }
+        MediaRecorder tempRecorder = mRecorder;
+        mRecorder = null;
+        try {
+            tempRecorder.stop();
+        } finally {
+            tempRecorder.release();
+        }
+        startRecorder(filePath);
+        mFilePath = filePath;
+        Log.i(TAG, "The recording goes on in " + filePath);
+    }
+
     public String Stop() throws IOException {
         Log.d(TAG, "stopRecording called");
         mResuming = false;
